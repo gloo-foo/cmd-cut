@@ -4,15 +4,16 @@ import (
 	"fmt"
 	"os"
 
-	command "github.com/gloo-foo/cmd-cut"
 	"github.com/gloo-foo/testable"
+
+	command "github.com/gloo-foo/cmd-cut"
 )
 
 func ExampleCut_fromFile_fields() {
 	// cut -d: -f2 testdata/fields.txt
 	data, err := os.ReadFile("testdata/fields.txt")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "read testdata: %v\n", err)
+		fmt.Println(err)
 		return
 	}
 	output, _ := testable.Test(

@@ -4,8 +4,9 @@ import (
 	"slices"
 	"testing"
 
-	cut "github.com/gloo-foo/cmd-cut/alias"
 	"github.com/gloo-foo/testable"
+
+	cut "github.com/gloo-foo/cmd-cut/alias"
 )
 
 // The alias package re-exports the constructor and flag helpers under short

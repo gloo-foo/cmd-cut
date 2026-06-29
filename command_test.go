@@ -4,9 +4,10 @@ import (
 	"slices"
 	"testing"
 
-	command "github.com/gloo-foo/cmd-cut"
 	gloo "github.com/gloo-foo/framework"
 	"github.com/gloo-foo/testable"
+
+	command "github.com/gloo-foo/cmd-cut"
 )
 
 // lines executes cmd over input and returns the split output lines.

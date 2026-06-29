@@ -75,9 +75,9 @@ func Cut(opts ...any) gloo.Command[[]byte, []byte] {
 // cutConfig holds parsed option values for the Cut command.
 type cutConfig struct {
 	delimiter  string
-	fields     []position
 	bytesSpec  string
 	charsSpec  string
+	fields     []position
 	complement bool
 }
 
@@ -93,13 +93,13 @@ func parseConfig(opts []any) cutConfig {
 // applyOpt records a single option into cfg.
 func applyOpt(cfg *cutConfig, o any) {
 	switch v := o.(type) {
-	case cutDelimiterOpt:
+	case CutDelimiterOpt:
 		cfg.delimiter = string(v)
-	case cutFieldsOpt:
+	case CutFieldsOpt:
 		cfg.fields = toPositions(v)
-	case cutBytesOpt:
+	case CutBytesOpt:
 		cfg.bytesSpec = string(v)
-	case cutCharsOpt:
+	case CutCharsOpt:
 		cfg.charsSpec = string(v)
 	case cutComplementFlag:
 		cfg.complement = bool(v)

@@ -3,8 +3,9 @@ package cut_test
 import (
 	"fmt"
 
-	command "github.com/gloo-foo/cmd-cut"
 	"github.com/gloo-foo/testable"
+
+	command "github.com/gloo-foo/cmd-cut"
 )
 
 func ExampleCut_fields() {
