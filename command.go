@@ -33,8 +33,8 @@ func (iv interval) contains(pos position) bool {
 
 // selection is a parsed position spec together with the complement flag.
 type selection struct {
-	intervals  []interval
-	complement bool
+	intervals      []interval
+	isComplemented bool
 }
 
 // selected reports whether the 1-based pos should be emitted, applying the
@@ -47,7 +47,7 @@ func (s selection) selected(pos position) bool {
 			break
 		}
 	}
-	return in != s.complement
+	return in != s.isComplemented
 }
 
 // Cut returns a Command that selects fields, bytes, or characters from each
@@ -64,50 +64,56 @@ func Cut(opts ...any) gloo.Command[[]byte, []byte] {
 	cfg := parseConfig(opts)
 	switch {
 	case cfg.bytesSpec != "":
-		return positionCommand(parseSpec(cfg.bytesSpec, cfg.complement), selectBytes)
+		return positionCommand(parseSpec(cfg.bytesSpec, cfg.complementEnabled), selectBytes)
 	case cfg.charsSpec != "":
-		return positionCommand(parseSpec(cfg.charsSpec, cfg.complement), selectChars)
+		return positionCommand(parseSpec(cfg.charsSpec, cfg.complementEnabled), selectChars)
 	default:
 		return fieldsCommand(cfg)
 	}
 }
 
+// positionSpec is a comma-separated list of 1-based positions and ranges,
+// e.g. "1-3,5,7-": the argument grammar shared by the -b and -c specs.
+type positionSpec string
+
 // cutConfig holds parsed option values for the Cut command.
 type cutConfig struct {
-	delimiter  string
-	bytesSpec  string
-	charsSpec  string
-	fields     []position
-	complement bool
+	delimiter         CutDelimiter
+	bytesSpec         positionSpec
+	charsSpec         positionSpec
+	fields            []position
+	complementEnabled cutComplementFlag
 }
 
 // parseConfig folds the variadic options into a cutConfig.
 func parseConfig(opts []any) cutConfig {
 	var cfg cutConfig
 	for _, o := range opts {
-		applyOpt(&cfg, o)
+		cfg = cfg.with(o)
 	}
 	return cfg
 }
 
-// applyOpt records a single option into cfg.
-func applyOpt(cfg *cutConfig, o any) {
+// with folds a single option value into the config, returning the updated
+// copy. Values of any other type are ignored.
+func (c cutConfig) with(o any) cutConfig {
 	switch v := o.(type) {
-	case CutDelimiterOpt:
-		cfg.delimiter = string(v)
+	case CutDelimiter:
+		c.delimiter = v
 	case CutFieldsOpt:
-		cfg.fields = toPositions(v)
-	case CutBytesOpt:
-		cfg.bytesSpec = string(v)
-	case CutCharsOpt:
-		cfg.charsSpec = string(v)
+		c.fields = toPositions(v)
+	case CutBytes:
+		c.bytesSpec = positionSpec(v)
+	case CutChars:
+		c.charsSpec = positionSpec(v)
 	case cutComplementFlag:
-		cfg.complement = bool(v)
+		c.complementEnabled = v
 	}
+	return c
 }
 
 // toPositions widens the 1-based field indices into positions.
-func toPositions(fields []int) []position {
+func toPositions(fields CutFieldsOpt) []position {
 	out := make([]position, len(fields))
 	for i, f := range fields {
 		out[i] = position(f)
@@ -119,19 +125,23 @@ func toPositions(fields []int) []position {
 // empty parts are skipped; a spec that yields no intervals is left empty, which
 // (without complement) emits nothing — matching the silent-skip behaviour of
 // the original byte/char modes.
-func parseSpec(spec string, complement bool) selection {
+func parseSpec(spec positionSpec, isComplement cutComplementFlag) selection {
 	var ivs []interval
-	for _, part := range strings.Split(spec, ",") {
-		if iv, ok := parseInterval(strings.TrimSpace(part)); ok {
+	for _, part := range strings.Split(string(spec), ",") {
+		if iv, ok := parseInterval(specPart(strings.TrimSpace(part))); ok {
 			ivs = append(ivs, iv)
 		}
 	}
-	return selection{intervals: ivs, complement: complement}
+	return selection{intervals: ivs, isComplemented: bool(isComplement)}
 }
 
+// specPart is one comma-free element of a positionSpec: "N", "N-M", "N-", or
+// "-M", or one of the two sides of such a range.
+type specPart string
+
 // parseInterval parses one comma-free spec part: "N", "N-M", "N-", or "-M".
-func parseInterval(part string) (interval, bool) {
-	dash := strings.Index(part, "-")
+func parseInterval(part specPart) (interval, bool) {
+	dash := strings.Index(string(part), "-")
 	if dash < 0 {
 		return singleInterval(part)
 	}
@@ -139,7 +149,7 @@ func parseInterval(part string) (interval, bool) {
 }
 
 // singleInterval parses a bare "N" into the interval [N, N].
-func singleInterval(s string) (interval, bool) {
+func singleInterval(s specPart) (interval, bool) {
 	n, ok := parsePosition(s)
 	if !ok {
 		return interval{}, false
@@ -149,7 +159,7 @@ func singleInterval(s string) (interval, bool) {
 
 // rangeInterval parses the two sides of a "lo-hi" spec, where either side may be
 // empty: "N-" runs to the end and "-M" starts at position 1.
-func rangeInterval(loStr, hiStr string) (interval, bool) {
+func rangeInterval(loStr, hiStr specPart) (interval, bool) {
 	lo, hi := position(1), unbounded
 	if loStr != "" {
 		parsed, ok := parsePosition(loStr)
@@ -169,8 +179,8 @@ func rangeInterval(loStr, hiStr string) (interval, bool) {
 }
 
 // parsePosition parses a positive 1-based position.
-func parsePosition(s string) (position, bool) {
-	n, err := strconv.Atoi(s)
+func parsePosition(s specPart) (position, bool) {
+	n, err := strconv.Atoi(string(s))
 	if err != nil {
 		return 0, false
 	}
@@ -210,39 +220,43 @@ func selectChars(line []byte, sel selection) []byte {
 	return []byte(string(out))
 }
 
+// fieldsRequested reports whether the -f flag named any fields; without a
+// request the field mode passes every line through unchanged, like GNU cut.
+type fieldsRequested bool
+
 // fieldsCommand builds the field-selection (-f/-d) mode command.
 func fieldsCommand(cfg cutConfig) gloo.Command[[]byte, []byte] {
 	delim := []byte(delimiterOrTab(cfg.delimiter))
-	sel := fieldSelection(cfg.fields, cfg.complement)
-	noSelection := len(cfg.fields) == 0
+	sel := fieldSelection(cfg.fields, cfg.complementEnabled)
+	hasFields := fieldsRequested(len(cfg.fields) > 0)
 	return patterns.Map(func(line []byte) ([]byte, error) {
-		return cutFields(line, delim, sel, noSelection), nil
+		return cutFields(line, delim, sel, hasFields), nil
 	})
 }
 
 // delimiterOrTab defaults an empty delimiter to a tab, like GNU cut.
-func delimiterOrTab(d string) string {
+func delimiterOrTab(d CutDelimiter) string {
 	if d == "" {
 		return "\t"
 	}
-	return d
+	return string(d)
 }
 
 // fieldSelection turns the requested 1-based field indices into a selection of
 // single-position intervals.
-func fieldSelection(fields []position, complement bool) selection {
+func fieldSelection(fields []position, isComplement cutComplementFlag) selection {
 	ivs := make([]interval, len(fields))
 	for i, f := range fields {
 		ivs[i] = interval{lo: f, hi: f}
 	}
-	return selection{intervals: ivs, complement: complement}
+	return selection{intervals: ivs, isComplemented: bool(isComplement)}
 }
 
 // cutFields selects fields from one line. With no fields requested, or when the
 // line contains no delimiter, the line passes through unchanged. Selected fields
 // are emitted in input order (cut semantics), joined by the delimiter.
-func cutFields(line, delim []byte, sel selection, noSelection bool) []byte {
-	if noSelection {
+func cutFields(line, delim []byte, sel selection, hasFields fieldsRequested) []byte {
+	if !bool(hasFields) {
 		return line
 	}
 	parts := bytes.Split(line, delim)

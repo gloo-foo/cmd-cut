@@ -1,30 +1,24 @@
 package command
 
-// CutDelimiterOpt sets the field delimiter (-d flag). Default is tab.
-type CutDelimiterOpt string
+// CutDelimiter sets the field delimiter (-d flag). Default is tab.
+type CutDelimiter string
 
-// CutDelimiter returns a delimiter option for Cut.
-func CutDelimiter(d string) CutDelimiterOpt { return CutDelimiterOpt(d) }
+// CutField is a 1-based field position selected by the -f flag.
+type CutField int
 
 // CutFieldsOpt selects fields by 1-based position (-f flag).
-type CutFieldsOpt []int
+type CutFieldsOpt []CutField
 
 // CutFields returns a fields option for Cut.
-func CutFields(f ...int) CutFieldsOpt { return CutFieldsOpt(f) }
+func CutFields(f ...CutField) CutFieldsOpt { return CutFieldsOpt(f) }
 
-// CutBytesOpt selects bytes by position (-b flag).
+// CutBytes selects bytes by position (-b flag).
 // The spec string uses 1-based positions and ranges: "1-3,5,7-9".
-type CutBytesOpt string
+type CutBytes string
 
-// CutBytes returns a byte-position option for Cut.
-func CutBytes(spec string) CutBytesOpt { return CutBytesOpt(spec) }
-
-// CutCharsOpt selects characters (runes) by position (-c flag).
+// CutChars selects characters (runes) by position (-c flag).
 // The spec string uses 1-based positions and ranges: "1-3,5,7-9".
-type CutCharsOpt string
-
-// CutChars returns a character-position option for Cut.
-func CutChars(spec string) CutCharsOpt { return CutCharsOpt(spec) }
+type CutChars string
 
 // cutComplementFlag inverts the selection (--complement flag).
 type cutComplementFlag bool
